@@ -548,6 +548,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     processed_zone_configs = {}
     device_registry = dr.async_get(hass)
     
+    # Track any zones with missing device references
+    zones_with_missing_devices = []
+    
     for zone_id, zone_config in zone_configs.items():
         processed_config = zone_config.copy()
         
@@ -564,8 +567,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         if isinstance(identifier, str) and len(identifier) > 6:
                             processed_config[CONF_ZONE_ID_FROM] = identifier
                             break
+                else:
+                    _LOGGER.error(f"Zone {zone_id}: device_from {device_from} not found in device registry - ramses_cc may not be loaded yet")
+                    zones_with_missing_devices.append(zone_id)
             except Exception as e:
-                _LOGGER.warning(f"Failed to extract serial from device_from {device_from} for zone {zone_id}: {e}")
+                _LOGGER.error(f"Failed to extract serial from device_from {device_from} for zone {zone_id}: {e}")
+                zones_with_missing_devices.append(zone_id)
         
         if device_to and not zone_config.get(CONF_ZONE_ID_TO):
             # Extract serial from device_to if not already available
@@ -576,10 +583,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         if isinstance(identifier, str) and len(identifier) > 6:
                             processed_config[CONF_ZONE_ID_TO] = identifier
                             break
+                else:
+                    _LOGGER.error(f"Zone {zone_id}: device_to {device_to} not found in device registry - ramses_cc may not be loaded yet")
+                    if zone_id not in zones_with_missing_devices:
+                        zones_with_missing_devices.append(zone_id)
             except Exception as e:
-                _LOGGER.warning(f"Failed to extract serial from device_to {device_to} for zone {zone_id}: {e}")
+                _LOGGER.error(f"Failed to extract serial from device_to {device_to} for zone {zone_id}: {e}")
+                if zone_id not in zones_with_missing_devices:
+                    zones_with_missing_devices.append(zone_id)
+        
+        # Validate that we have the required serials (either from config or extracted)
+        if not processed_config.get(CONF_ZONE_ID_FROM) or not processed_config.get(CONF_ZONE_ID_TO):
+            _LOGGER.error(f"Zone {zone_id} missing required device serials - id_from: {processed_config.get(CONF_ZONE_ID_FROM)}, id_to: {processed_config.get(CONF_ZONE_ID_TO)}")
+            if zone_id not in zones_with_missing_devices:
+                zones_with_missing_devices.append(zone_id)
         
         processed_zone_configs[zone_id] = processed_config
+    
+    # Log warning if any zones have issues (but continue setup)
+    if zones_with_missing_devices:
+        _LOGGER.warning(
+            f"Zones {zones_with_missing_devices} have missing device references. "
+            f"This usually means ramses_cc devices aren't loaded yet. "
+            f"Please reconfigure these zones or restart Home Assistant if the issue persists."
+        )
     
     zone_configs = processed_zone_configs
     
