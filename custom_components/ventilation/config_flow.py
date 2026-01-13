@@ -98,7 +98,7 @@ def merge_config_with_validation(entry_data: dict, entry_options: dict, allow_cl
         safe_to_remove = True
         
         for zone_id in zones_to_remove:
-            zone_config = zone_configs.get(zone_id, {})
+            zone_config = zone_configs.get(str(zone_id), {})
             # Check if zone has important device configurations
             if zone_config.get("id_to") or zone_config.get("device_to"):
                 _LOGGER.warning(f"Zone {zone_id} has device config (id_to: {zone_config.get('id_to')}) - requiring explicit confirmation")
@@ -107,8 +107,8 @@ def merge_config_with_validation(entry_data: dict, entry_options: dict, allow_cl
         if safe_to_remove:
             zones_to_keep = set(range(1, target_num_zones + 1))
             cleaned_zone_configs = {
-                zone_id: config for zone_id, config in zone_configs.items()
-                if isinstance(zone_id, int) and zone_id in zones_to_keep
+                str(zone_id): config for zone_id, config in zone_configs.items()
+                if (isinstance(zone_id, (int, str)) and int(zone_id) in zones_to_keep)
             }
             
             # Log cleanup for debugging
@@ -1177,7 +1177,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Store zone configuration data (fan rates are now in percentages)
                 if "zone_configs" not in self._data:
                     self._data["zone_configs"] = {}
-                self._data["zone_configs"][zone_number] = {
+                self._data["zone_configs"][str(zone_number)] = {
                     "device_from": device_from_id,  # Store device ID for config flow
                     "device_to": device_to_id,      # Store device ID for config flow
                     "id_from": id_from,             # Store serial for commands
@@ -1224,7 +1224,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(f"Unexpected error in zone config step: {err}", exc_info=True)
 
         # Show the zone configuration form
-        current_config = self._data.get("zone_configs", {}).get(zone_number, {})
+        current_config = self._data.get("zone_configs", {}).get(str(zone_number), {})
         remote_device_id = self._data.get("remote_device")
         
         return self.async_show_form(
@@ -3086,6 +3086,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 
                 # Copy/update existing zone configs up to the new number of zones only
                 for zone_num in range(1, new_num_zones + 1):
+                    zone_num = str(zone_num)
                     if zone_num in current_zone_configs:
                         new_zone_configs[zone_num] = current_zone_configs[zone_num].copy()
                         # Update remote device serial in existing configs
@@ -3210,7 +3211,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 
                 # Update zone configuration data
                 current_zone_configs = self._data.get("zone_configs", {})
-                current_zone_configs[zone_number] = {
+                current_zone_configs[str(zone_number)] = {
                     "device_from": device_from_id,  # Store device ID for config flow
                     "device_to": device_to_id,      # Store device ID for config flow
                     "id_from": id_from,             # Store serial for commands
@@ -3267,7 +3268,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def _schema_zone_config(self, zone_number: int) -> vol.Schema:
         """Generate schema for zone configuration options with current values as defaults."""
         cur = self._data
-        current_zone_config = cur.get("zone_configs", {}).get(zone_number, {})
+        current_zone_config = cur.get("zone_configs", {}).get(str(zone_number), {})
         remote_device_id = cur.get("remote_device")
         
         # Use device IDs if available, otherwise fall back to remote device for device_from
